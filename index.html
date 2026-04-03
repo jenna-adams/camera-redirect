@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Initializing Camera...</title>
+    <style>
+        /* Define theme colors */
+        :root {
+            --bg-color: #f4f7f6; /* Light gray system background */
+            --text-color: #333;
+            --accent-color: #007bff; /* Standard 'action' blue */
+        }
+
+        body, html {
+            height: 100%;
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: var(--text-color);
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container {
+            text-align: center;
+            padding: 20px;
+            width: 80%;
+            max-width: 400px;
+        }
+
+        /* The stylized 'loading' button */
+        .camera-button {
+            display: inline-block;
+            background-color: var(--accent-color);
+            color: white;
+            padding: 18px 30px;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 18px;
+            box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
+            cursor: pointer;
+            transition: transform 0.1s, box-shadow 0.2s;
+            border: none;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .camera-button:active {
+            transform: scale(0.97);
+            box-shadow: 0 2px 8px rgba(0, 123, 255, 0.3);
+        }
+
+        .status-text {
+            font-size: 16px;
+            margin-bottom: 30px;
+            line-height: 1.4;
+            color: #666;
+        }
+
+        /* Subtle loading spinner */
+        .spinner {
+            border: 3px solid rgba(0, 0, 0, 0.1);
+            border-top: 3px solid var(--accent-color);
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Hide the ugly native input button */
+        #native-camera-input {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="status-text">
+            <div class="spinner"></div>
+            <span>Establishing secure connection...</span>
+            <br>
+            <strong style="color: #333; font-size: 1.1em;">Camera Access Required</strong>
+        </div>
+
+        <label for="native-camera-input" class="camera-button">
+            TAP TO LAUNCH CAMERA
+        </label>
+
+        <input type="file" 
+               id="native-camera-input" 
+               accept="image/*" 
+               capture="camera">
+    </div>
+
+</body>
+</html>
