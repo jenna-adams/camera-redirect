@@ -3,107 +3,258 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Initializing Camera...</title>
+    <title>Camera Demo</title>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
     <style>
-        /* Define theme colors */
         :root {
-            --bg-color: #f4f7f6; /* Light gray system background */
-            --text-color: #333;
-            --accent-color: #007bff; /* Standard 'action' blue */
+            --bg-color: #121212;
+            --text-color: #ffffff;
+            --accent-color: #007bff;
+            --toggle-bg: #333333;
         }
 
         body, html {
-            height: 100%;
             margin: 0;
+            padding: 0;
+            height: 100%;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             background-color: var(--bg-color);
-            display: flex;
-            justify-content: center;
-            align-items: center;
             color: var(--text-color);
+            display: flex;
+            flex-direction: column;
             -webkit-font-smoothing: antialiased;
         }
 
-        .container {
+        /* --- Toggle Switch UI --- */
+        .header {
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            background-color: #000000;
+            z-index: 100;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+        }
+
+        .toggle-container {
+            display: flex;
+            background-color: var(--toggle-bg);
+            border-radius: 30px;
+            overflow: hidden;
+            width: 100%;
+            max-width: 400px;
+            position: relative;
+        }
+
+        .toggle-btn {
+            flex: 1;
+            padding: 12px 0;
+            text-align: center;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            z-index: 2;
+            transition: color 0.3s;
+            color: #aaaaaa;
+        }
+
+        .toggle-btn.active {
+            color: #ffffff;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 50%;
+            height: 100%;
+            background-color: var(--accent-color);
+            border-radius: 30px;
+            transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+            z-index: 1;
+        }
+
+        /* --- View Containers --- */
+        .view-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            display: none; /* Hidden by default */
+            width: 100%;
+        }
+
+        .view-section.active {
+            display: flex;
+        }
+
+        /* --- Native Camera View Styles --- */
+        .native-container {
             text-align: center;
             padding: 20px;
             width: 80%;
             max-width: 400px;
         }
 
-        /* The stylized 'loading' button */
         .camera-button {
             display: inline-block;
             background-color: var(--accent-color);
             color: white;
             padding: 18px 30px;
             border-radius: 50px;
-            text-decoration: none;
             font-weight: 600;
             font-size: 18px;
             box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
             cursor: pointer;
-            transition: transform 0.1s, box-shadow 0.2s;
-            border: none;
             width: 100%;
             box-sizing: border-box;
         }
 
         .camera-button:active {
             transform: scale(0.97);
-            box-shadow: 0 2px 8px rgba(0, 123, 255, 0.3);
         }
 
-        .status-text {
-            font-size: 16px;
-            margin-bottom: 30px;
-            line-height: 1.4;
-            color: #666;
-        }
-
-        /* Subtle loading spinner */
-        .spinner {
-            border: 3px solid rgba(0, 0, 0, 0.1);
-            border-top: 3px solid var(--accent-color);
-            border-radius: 50%;
-            width: 24px;
-            height: 24px;
-            animation: spin 1s linear infinite;
-            display: inline-block;
-            vertical-align: middle;
-            margin-right: 10px;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        /* Hide the ugly native input button */
         #native-camera-input {
+            display: none;
+        }
+
+        .helper-text {
+            color: #aaaaaa;
+            margin-bottom: 20px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        /* --- Web Scanner View Styles --- */
+        #reader {
+            width: 100%;
+            max-width: 500px;
+            border: none;
+        }
+
+        #loading-text {
+            position: absolute;
+            top: 50%;
+            text-align: center;
+            width: 100%;
+            color: #aaaaaa;
             display: none;
         }
     </style>
 </head>
 <body>
 
-    <div class="container">
-        <div class="status-text">
-            <div class="spinner"></div>
-            <span>Establishing secure connection...</span>
-            <br>
-            <strong style="color: #333; font-size: 1.1em;">Camera Access Required</strong>
+    <div class="header">
+        <div class="toggle-container">
+            <div class="toggle-slider" id="slider"></div>
+            <div class="toggle-btn active" id="btn-native" onclick="switchView('native')">Native Camera</div>
+            <div class="toggle-btn" id="btn-web" onclick="switchView('web')">Web Scanner</div>
         </div>
-
-        <label for="native-camera-input" class="camera-button">
-            TAP TO LAUNCH CAMERA
-        </label>
-
-        <input type="file" 
-               id="native-camera-input" 
-               accept="image/*" 
-               capture="camera">
     </div>
 
+    <div id="view-native" class="view-section active">
+        <div class="native-container">
+            <div class="helper-text">
+                This option requires one tap, but opens the device's high-quality native camera app.
+            </div>
+            <label for="native-camera-input" class="camera-button">
+                TAP TO OPEN CAMERA
+            </label>
+            <input type="file" id="native-camera-input" accept="image/*" capture="camera">
+        </div>
+    </div>
+
+    <div id="view-web" class="view-section">
+        <div class="helper-text" style="padding: 20px; text-align: center; margin-bottom: 0;">
+            This option requires zero taps (after initial permission) and scans directly in the browser.
+        </div>
+        <div id="loading-text">Requesting camera access...</div>
+        <div id="reader"></div>
+    </div>
+
+    <script>
+        // --- State Management ---
+        let html5QrCode = null;
+        let isScanning = false;
+
+        // --- View Switching Logic ---
+        function switchView(viewId) {
+            const slider = document.getElementById('slider');
+            const btnNative = document.getElementById('btn-native');
+            const btnWeb = document.getElementById('btn-web');
+            const viewNative = document.getElementById('view-native');
+            const viewWeb = document.getElementById('view-web');
+
+            if (viewId === 'native') {
+                // UI Updates
+                slider.style.transform = 'translateX(0)';
+                btnNative.classList.add('active');
+                btnWeb.classList.remove('active');
+                viewNative.classList.add('active');
+                viewWeb.classList.remove('active');
+
+                // Crucial: Stop the web camera so the native camera can use the hardware
+                stopWebScanner();
+
+            } else if (viewId === 'web') {
+                // UI Updates
+                slider.style.transform = 'translateX(100%)';
+                btnWeb.classList.add('active');
+                btnNative.classList.remove('active');
+                viewWeb.classList.add('active');
+                viewNative.classList.remove('active');
+
+                // Start the web camera
+                startWebScanner();
+            }
+        }
+
+        // --- Web Scanner Logic ---
+        function startWebScanner() {
+            if (!html5QrCode) {
+                html5QrCode = new Html5Qrcode("reader");
+            }
+
+            const loadingText = document.getElementById('loading-text');
+            loadingText.style.display = 'block';
+
+            const config = { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 };
+
+            html5QrCode.start(
+                { facingMode: "environment" }, 
+                config, 
+                (decodedText) => {
+                    // Success callback: Stop camera and redirect/alert
+                    stopWebScanner().then(() => {
+                        alert("Scanned Successfully: " + decodedText);
+                        // In production, replace alert with: window.location.href = decodedText;
+                    });
+                }
+            ).then(() => {
+                isScanning = true;
+                loadingText.style.display = 'none';
+            }).catch((err) => {
+                loadingText.innerText = "Camera access denied. Please check permissions.";
+                console.error("Camera error:", err);
+            });
+        }
+
+        function stopWebScanner() {
+            return new Promise((resolve) => {
+                if (html5QrCode && isScanning) {
+                    html5QrCode.stop().then(() => {
+                        isScanning = false;
+                        html5QrCode.clear(); // Clears the UI canvas
+                        resolve();
+                    }).catch(err => {
+                        console.error("Failed to stop scanner:", err);
+                        resolve(); // Resolve anyway so UI doesn't hang
+                    });
+                } else {
+                    resolve();
+                }
+            });
+        }
+    </script>
 </body>
 </html>
