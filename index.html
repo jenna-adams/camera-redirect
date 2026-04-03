@@ -6,7 +6,6 @@
     <title>Camera Demo</title>
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
     <style>
-        /* Default to Light Mode */
         :root {
             --bg-color: #f4f7f6;
             --text-color: #333333;
@@ -14,9 +13,9 @@
             --toggle-bg: #e0e0e0;
             --header-bg: #ffffff;
             --toggle-text-inactive: #888888;
+            --success-color: #00e676; /* Bright Green for successful scan */
         }
 
-        /* Automatically switch to Dark Mode */
         @media (prefers-color-scheme: dark) {
             :root {
                 --bg-color: #121212;
@@ -40,14 +39,13 @@
             -webkit-font-smoothing: antialiased;
         }
 
-        /* --- Toggle Switch UI --- */
         .header {
             padding: 20px;
             display: flex;
             justify-content: center;
-            background-color: var(--header-bg); /* Fixed to adapt to light/dark mode */
+            background-color: var(--header-bg);
             z-index: 100;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1); /* Softened shadow for light mode */
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
 
         .toggle-container {
@@ -69,11 +67,11 @@
             cursor: pointer;
             z-index: 2;
             transition: color 0.3s;
-            color: var(--toggle-text-inactive); /* Fixed to adapt to light/dark mode */
+            color: var(--toggle-text-inactive);
         }
 
         .toggle-btn.active {
-            color: #ffffff; /* Keep active text white since the slider is blue */
+            color: #ffffff;
         }
 
         .toggle-slider {
@@ -88,7 +86,6 @@
             z-index: 1;
         }
 
-        /* --- View Containers --- */
         .view-section {
             flex: 1;
             display: flex;
@@ -103,7 +100,6 @@
             display: flex;
         }
 
-        /* --- Native Camera View Styles --- */
         .native-container {
             text-align: center;
             padding: 20px;
@@ -140,20 +136,66 @@
             line-height: 1.5;
         }
 
-        /* --- Web Scanner View Styles --- */
-        #reader {
+        /* --- Upgraded Web Scanner Styles --- */
+        .scanner-container {
+            position: relative;
             width: 100%;
             max-width: 500px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #reader {
+            width: 100%;
             border: none;
         }
 
         #loading-text {
             position: absolute;
-            top: 50%;
             text-align: center;
             width: 100%;
             color: var(--toggle-text-inactive);
             display: none;
+            z-index: 5;
+        }
+
+        /* The Custom QR Target Box */
+        .scan-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 250px;
+            height: 250px;
+            pointer-events: none; /* Ensures the camera can still focus */
+            z-index: 10;
+            display: none; /* Hidden until camera is fully loaded */
+        }
+
+        .scan-overlay.active {
+            display: block;
+        }
+
+        /* The 4 Corners */
+        .corner {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border: 5px solid var(--accent-color);
+            transition: all 0.2s ease; /* Smooth animation on success */
+        }
+
+        .top-left { top: 0; left: 0; border-right: none; border-bottom: none; border-radius: 12px 0 0 0; }
+        .top-right { top: 0; right: 0; border-left: none; border-bottom: none; border-radius: 0 12px 0 0; }
+        .bottom-left { bottom: 0; left: 0; border-right: none; border-top: none; border-radius: 0 0 0 12px; }
+        .bottom-right { bottom: 0; right: 0; border-left: none; border-top: none; border-radius: 0 0 12px 0; }
+
+        /* Success State Animation */
+        .scan-overlay.success .corner {
+            border-color: var(--success-color);
+            box-shadow: 0 0 15px rgba(0, 230, 118, 0.5);
+            transform: scale(1.05); /* Slight "pop" effect */
         }
     </style>
 </head>
@@ -183,16 +225,26 @@
         <div class="helper-text" style="padding: 20px; text-align: center; margin-bottom: 0;">
             This option requires zero taps (after initial permission) and scans directly in the browser.
         </div>
-        <div id="loading-text">Requesting camera access...</div>
-        <div id="reader"></div>
+        
+        <div class="scanner-container">
+            <div id="loading-text">Requesting camera access...</div>
+            <div id="reader"></div>
+            
+            <div class="scan-overlay" id="scan-overlay">
+                <div class="corner top-left"></div>
+                <div class="corner top-right"></div>
+                <div class="corner bottom-left"></div>
+                <div class="corner bottom-right"></div>
+            </div>
+        </div>
+
     </div>
 
     <script>
-        // --- State Management ---
         let html5QrCode = null;
         let isScanning = false;
+        let isProcessing = false; // Prevents multiple rapid scans
 
-        // --- View Switching Logic ---
         function switchView(viewId) {
             const slider = document.getElementById('slider');
             const btnNative = document.getElementById('btn-native');
@@ -201,7 +253,6 @@
             const viewWeb = document.getElementById('view-web');
 
             if (viewId === 'native') {
-                // UI Updates
                 slider.style.transform = 'translateX(0)';
                 btnNative.classList.add('active');
                 btnWeb.classList.remove('active');
@@ -210,7 +261,6 @@
 
                 stopWebScanner();
             } else if (viewId === 'web') {
-                // UI Updates
                 slider.style.transform = 'translateX(100%)';
                 btnWeb.classList.add('active');
                 btnNative.classList.remove('active');
@@ -221,14 +271,17 @@
             }
         }
 
-        // --- Web Scanner Logic ---
         function startWebScanner() {
             if (!html5QrCode) {
                 html5QrCode = new Html5Qrcode("reader");
             }
 
             const loadingText = document.getElementById('loading-text');
+            const overlay = document.getElementById('scan-overlay');
+            
             loadingText.style.display = 'block';
+            overlay.classList.remove('active', 'success'); // Reset overlay state
+            isProcessing = false;
 
             const config = { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 };
 
@@ -236,33 +289,51 @@
                 { facingMode: "environment" }, 
                 config, 
                 (decodedText) => {
-                    stopWebScanner().then(() => {
-                        alert("Scanned Successfully: " + decodedText);
-                        // In production, replace alert with: window.location.href = decodedText;
-                    });
+                    // Prevent it from scanning the same code 10 times in one second
+                    if (isProcessing) return;
+                    isProcessing = true;
+
+                    // 1. Vibrate the phone (Works on Android, mostly restricted on iOS Safari)
+                    if (navigator.vibrate) {
+                        navigator.vibrate(150); 
+                    }
+
+                    // 2. Flash the target box Green
+                    overlay.classList.add('success');
+
+                    // 3. Wait 400ms so the user sees the success animation, THEN stop and alert
+                    setTimeout(() => {
+                        stopWebScanner().then(() => {
+                            alert("Scanned Successfully: " + decodedText);
+                            // window.location.href = decodedText;
+                        });
+                    }, 400);
                 }
             ).then(() => {
                 isScanning = true;
                 loadingText.style.display = 'none';
+                overlay.classList.add('active'); // Show the target box once video starts
             }).catch((err) => {
                 loadingText.innerText = "Camera access denied. Please check permissions.";
                 console.error("Camera error:", err);
-                html5QrCode = null; // CRUCIAL FIX: Reset on failure
+                html5QrCode = null; 
             });
         }
 
         function stopWebScanner() {
             return new Promise((resolve) => {
+                document.getElementById('scan-overlay').classList.remove('active', 'success');
+                
                 if (html5QrCode && isScanning) {
                     html5QrCode.stop().then(() => {
                         isScanning = false;
                         html5QrCode.clear();
-                        html5QrCode = null; // CRUCIAL FIX: Destroy zombie instance
+                        html5QrCode = null; 
                         resolve();
                     }).catch(err => {
                         console.error("Failed to stop scanner:", err);
                         isScanning = false;
-                        html5QrCode = null; // CRUCIAL FIX: Destroy even on error
+                        html5QrCode = null; 
                         resolve(); 
                     });
                 } else {
@@ -271,7 +342,6 @@
             });
         }
 
-        // --- Handle User Leaving and Returning to the Page ---
         document.addEventListener("visibilitychange", () => {
             if (document.hidden) {
                 if (isScanning) {
@@ -280,7 +350,6 @@
             } else {
                 const viewWeb = document.getElementById('view-web');
                 if (viewWeb.classList.contains('active')) {
-                    // CRUCIAL FIX: 500ms delay to let OS unlock hardware
                     setTimeout(() => {
                         startWebScanner();
                     }, 500);
