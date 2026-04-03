@@ -268,6 +268,24 @@
                 }
             });
         }
+
+        // --- Handle User Leaving and Returning to the Page ---
+        document.addEventListener("visibilitychange", () => {
+            if (document.hidden) {
+                // The user minimized the browser or switched tabs
+                if (isScanning) {
+                    // Stop the camera to prevent freezing and save battery
+                    stopWebScanner(); 
+                }
+            } else {
+                // The user came back to the page
+                const viewWeb = document.getElementById('view-web');
+                // Only restart the camera automatically if they are on the Web Scanner tab
+                if (viewWeb.classList.contains('active')) {
+                    startWebScanner();
+                }
+            }
+        });
     </script>
 </body>
 </html>
