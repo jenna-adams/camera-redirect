@@ -6,6 +6,7 @@
     <title>Camera Demo</title>
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
     <style>
+        /* Default to Light Mode */
         :root {
             --bg-color: #f4f7f6;
             --text-color: #333333;
@@ -15,6 +16,7 @@
             --toggle-text-inactive: #888888;
         }
 
+        /* Automatically switch to Dark Mode */
         @media (prefers-color-scheme: dark) {
             :root {
                 --bg-color: #121212;
@@ -43,9 +45,9 @@
             padding: 20px;
             display: flex;
             justify-content: center;
-            background-color: #000000;
+            background-color: var(--header-bg); /* Fixed to adapt to light/dark mode */
             z-index: 100;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1); /* Softened shadow for light mode */
         }
 
         .toggle-container {
@@ -67,11 +69,11 @@
             cursor: pointer;
             z-index: 2;
             transition: color 0.3s;
-            color: #aaaaaa;
+            color: var(--toggle-text-inactive); /* Fixed to adapt to light/dark mode */
         }
 
         .toggle-btn.active {
-            color: #ffffff;
+            color: #ffffff; /* Keep active text white since the slider is blue */
         }
 
         .toggle-slider {
@@ -93,7 +95,7 @@
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            display: none; /* Hidden by default */
+            display: none;
             width: 100%;
         }
 
@@ -132,7 +134,7 @@
         }
 
         .helper-text {
-            color: #aaaaaa;
+            color: var(--toggle-text-inactive);
             margin-bottom: 20px;
             font-size: 14px;
             line-height: 1.5;
@@ -150,7 +152,7 @@
             top: 50%;
             text-align: center;
             width: 100%;
-            color: #aaaaaa;
+            color: var(--toggle-text-inactive);
             display: none;
         }
     </style>
@@ -206,9 +208,7 @@
                 viewNative.classList.add('active');
                 viewWeb.classList.remove('active');
 
-                // Crucial: Stop the web camera so the native camera can use the hardware
                 stopWebScanner();
-
             } else if (viewId === 'web') {
                 // UI Updates
                 slider.style.transform = 'translateX(100%)';
@@ -217,7 +217,6 @@
                 viewWeb.classList.add('active');
                 viewNative.classList.remove('active');
 
-                // Start the web camera
                 startWebScanner();
             }
         }
@@ -237,7 +236,6 @@
                 { facingMode: "environment" }, 
                 config, 
                 (decodedText) => {
-                    // Success callback: Stop camera and redirect/alert
                     stopWebScanner().then(() => {
                         alert("Scanned Successfully: " + decodedText);
                         // In production, replace alert with: window.location.href = decodedText;
@@ -249,6 +247,7 @@
             }).catch((err) => {
                 loadingText.innerText = "Camera access denied. Please check permissions.";
                 console.error("Camera error:", err);
+                html5QrCode = null; // CRUCIAL FIX: Reset on failure
             });
         }
 
@@ -257,11 +256,14 @@
                 if (html5QrCode && isScanning) {
                     html5QrCode.stop().then(() => {
                         isScanning = false;
-                        html5QrCode.clear(); // Clears the UI canvas
+                        html5QrCode.clear();
+                        html5QrCode = null; // CRUCIAL FIX: Destroy zombie instance
                         resolve();
                     }).catch(err => {
                         console.error("Failed to stop scanner:", err);
-                        resolve(); // Resolve anyway so UI doesn't hang
+                        isScanning = false;
+                        html5QrCode = null; // CRUCIAL FIX: Destroy even on error
+                        resolve(); 
                     });
                 } else {
                     resolve();
@@ -272,17 +274,16 @@
         // --- Handle User Leaving and Returning to the Page ---
         document.addEventListener("visibilitychange", () => {
             if (document.hidden) {
-                // The user minimized the browser or switched tabs
                 if (isScanning) {
-                    // Stop the camera to prevent freezing and save battery
                     stopWebScanner(); 
                 }
             } else {
-                // The user came back to the page
                 const viewWeb = document.getElementById('view-web');
-                // Only restart the camera automatically if they are on the Web Scanner tab
                 if (viewWeb.classList.contains('active')) {
-                    startWebScanner();
+                    // CRUCIAL FIX: 500ms delay to let OS unlock hardware
+                    setTimeout(() => {
+                        startWebScanner();
+                    }, 500);
                 }
             }
         });
