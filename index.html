@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Camera Demo</title>
-    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.js"></script>
     <style>
         :root {
             --bg-color: #f4f7f6;
@@ -119,6 +119,8 @@
             cursor: pointer;
             width: 100%;
             box-sizing: border-box;
+            border: none;
+            font-family: inherit;
         }
 
         .camera-button:active {
@@ -136,7 +138,7 @@
             line-height: 1.5;
         }
 
-        /* --- Upgraded Web Scanner Styles --- */
+        /* --- getUserMedia-based Web Scanner Styles --- */
         .scanner-container {
             position: relative;
             width: 100%;
@@ -144,20 +146,36 @@
             display: flex;
             justify-content: center;
             align-items: center;
+            aspect-ratio: 1 / 1;
+            background-color: #000;
+            overflow: hidden;
+            border-radius: 16px;
         }
 
-        #reader {
+        #qr-video {
             width: 100%;
-            border: none;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            /* iOS requires these to avoid the browser hijacking playback into
+               its own native fullscreen player instead of showing it inline */
+            -webkit-transform: scaleX(1);
+        }
+
+        #qr-canvas {
+            display: none;
         }
 
         #loading-text {
             position: absolute;
             text-align: center;
             width: 100%;
-            color: var(--toggle-text-inactive);
+            padding: 0 20px;
+            box-sizing: border-box;
+            color: #ffffff;
             display: none;
             z-index: 5;
+            font-size: 14px;
         }
 
         /* The Custom QR Target Box */
@@ -225,11 +243,12 @@
         <div class="helper-text" style="padding: 20px; text-align: center; margin-bottom: 0;">
             This option requires zero taps (after initial permission) and scans directly in the browser.
         </div>
-        
+
         <div class="scanner-container">
+            <video id="qr-video" autoplay muted playsinline webkit-playsinline></video>
+            <canvas id="qr-canvas"></canvas>
             <div id="loading-text">Requesting camera access...</div>
-            <div id="reader"></div>
-            
+
             <div class="scan-overlay" id="scan-overlay">
                 <div class="corner top-left"></div>
                 <div class="corner top-right"></div>
@@ -241,9 +260,13 @@
     </div>
 
     <script>
-        let html5QrCode = null;
-        let isScanning = false;
+        let mediaStream = null;
+        let scanLoopId = null;
         let isProcessing = false; // Prevents multiple rapid scans
+
+        const video = document.getElementById('qr-video');
+        const canvas = document.getElementById('qr-canvas');
+        const canvasCtx = canvas.getContext('2d', { willReadFrequently: true });
 
         function switchView(viewId) {
             const slider = document.getElementById('slider');
@@ -271,81 +294,105 @@
             }
         }
 
-        function startWebScanner() {
-            if (!html5QrCode) {
-                html5QrCode = new Html5Qrcode("reader");
-            }
-
+        async function startWebScanner() {
             const loadingText = document.getElementById('loading-text');
             const overlay = document.getElementById('scan-overlay');
-            
+
             loadingText.style.display = 'block';
-            overlay.classList.remove('active', 'success'); // Reset overlay state
+            loadingText.innerText = 'Requesting camera access...';
+            overlay.classList.remove('active', 'success');
             isProcessing = false;
 
-            const config = { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 };
+            try {
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: { ideal: 'environment' },
+                        // Ask for a reasonably high-res feed; iOS will pick the
+                        // closest match its hardware supports.
+                        width: { ideal: 1280 },
+                        height: { ideal: 1280 }
+                    },
+                    audio: false
+                });
 
-            html5QrCode.start(
-                { facingMode: "environment" }, 
-                config, 
-                (decodedText) => {
-                    // Prevent it from scanning the same code 10 times in one second
-                    if (isProcessing) return;
-                    isProcessing = true;
+                video.srcObject = mediaStream;
 
-                    // 1. Vibrate the phone (Works on Android, mostly restricted on iOS Safari)
-                    if (navigator.vibrate) {
-                        navigator.vibrate(150); 
-                    }
+                // iOS Safari needs an explicit play() call after assigning
+                // srcObject, even with the autoplay attribute set.
+                await video.play();
 
-                    // 2. Flash the target box Green
-                    overlay.classList.add('success');
-
-                    // 3. Wait 400ms so the user sees the success animation, THEN stop and alert
-                    setTimeout(() => {
-                        stopWebScanner().then(() => {
-                            alert("Scanned Successfully: " + decodedText);
-                            // window.location.href = decodedText;
-                        });
-                    }, 400);
-                }
-            ).then(() => {
-                isScanning = true;
                 loadingText.style.display = 'none';
-                overlay.classList.add('active'); // Show the target box once video starts
-            }).catch((err) => {
-                loadingText.innerText = "Camera access denied. Please check permissions.";
-                console.error("Camera error:", err);
-                html5QrCode = null; 
-            });
+                overlay.classList.add('active');
+
+                scanLoopId = requestAnimationFrame(scanFrame);
+            } catch (err) {
+                loadingText.innerText = 'Camera access denied. Please check permissions.';
+                console.error('Camera error:', err);
+            }
+        }
+
+        function scanFrame() {
+            if (!mediaStream) return;
+
+            if (video.readyState === video.HAVE_ENOUGH_DATA && !isProcessing) {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                canvasCtx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                const imageData = canvasCtx.getImageData(0, 0, canvas.width, canvas.height);
+                const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                    inversionAttempts: 'dontInvert'
+                });
+
+                if (code && code.data) {
+                    handleSuccessfulScan(code.data);
+                    return; // stop the loop, handleSuccessfulScan will restart if needed
+                }
+            }
+
+            scanLoopId = requestAnimationFrame(scanFrame);
+        }
+
+        function handleSuccessfulScan(decodedText) {
+            isProcessing = true;
+            const overlay = document.getElementById('scan-overlay');
+
+            // 1. Vibrate the phone (works on Android, mostly restricted on iOS Safari)
+            if (navigator.vibrate) {
+                navigator.vibrate(150);
+            }
+
+            // 2. Flash the target box green
+            overlay.classList.add('success');
+
+            // 3. Wait so the user sees the success animation, then stop and alert
+            setTimeout(() => {
+                stopWebScanner();
+                alert('Scanned Successfully: ' + decodedText);
+                // window.location.href = decodedText;
+            }, 400);
         }
 
         function stopWebScanner() {
-            return new Promise((resolve) => {
-                document.getElementById('scan-overlay').classList.remove('active', 'success');
-                
-                if (html5QrCode && isScanning) {
-                    html5QrCode.stop().then(() => {
-                        isScanning = false;
-                        html5QrCode.clear();
-                        html5QrCode = null; 
-                        resolve();
-                    }).catch(err => {
-                        console.error("Failed to stop scanner:", err);
-                        isScanning = false;
-                        html5QrCode = null; 
-                        resolve(); 
-                    });
-                } else {
-                    resolve();
-                }
-            });
+            if (scanLoopId) {
+                cancelAnimationFrame(scanLoopId);
+                scanLoopId = null;
+            }
+
+            document.getElementById('scan-overlay').classList.remove('active', 'success');
+
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                mediaStream = null;
+            }
+
+            video.srcObject = null;
         }
 
-        document.addEventListener("visibilitychange", () => {
+        document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
-                if (isScanning) {
-                    stopWebScanner(); 
+                if (mediaStream) {
+                    stopWebScanner();
                 }
             } else {
                 const viewWeb = document.getElementById('view-web');
