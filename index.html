@@ -157,19 +157,24 @@
         }
 
         #qr-video {
-            position: relative;
-            z-index: 0;
+            /* The video itself is never shown on iOS: hardware-decoded video
+               playback there can render in a compositing layer that sits
+               above the entire page regardless of CSS z-index/isolation, so
+               any overlay drawn on top of a visible <video> can get hidden.
+               Instead we keep it playing off-screen and draw its frames onto
+               the visible canvas below, which composites normally. */
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        #qr-canvas {
             width: 100%;
             height: 100%;
             object-fit: cover;
             display: block;
-            /* iOS requires these to avoid the browser hijacking playback into
-               its own native fullscreen player instead of showing it inline */
-            -webkit-transform: scaleX(1);
-        }
-
-        #qr-canvas {
-            display: none;
         }
 
         #loading-text {
@@ -344,8 +349,14 @@
             if (!mediaStream) return;
 
             if (video.readyState === video.HAVE_ENOUGH_DATA && !isProcessing) {
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
+                // Keep the canvas sized to the video's native resolution. CSS
+                // object-fit: cover on the canvas handles scaling/cropping
+                // for display, exactly like it would on a <video>.
+                if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                }
+
                 canvasCtx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
                 const imageData = canvasCtx.getImageData(0, 0, canvas.width, canvas.height);
