@@ -150,9 +150,15 @@
             background-color: #000;
             overflow: hidden;
             border-radius: 16px;
+            /* Forces a real stacking context so iOS's hardware-accelerated
+               video layer can't paint above sibling elements regardless of
+               z-index (a known WebKit quirk). */
+            isolation: isolate;
         }
 
         #qr-video {
+            position: relative;
+            z-index: 0;
             width: 100%;
             height: 100%;
             object-fit: cover;
@@ -183,7 +189,10 @@
             position: absolute;
             top: 50%;
             left: 50%;
-            transform: translate(-50%, -50%);
+            /* translate3d instead of translate forces this element onto its
+               own GPU compositing layer, putting it on equal footing with
+               the video's hardware layer on iOS instead of losing to it. */
+            transform: translate3d(-50%, -50%, 0);
             width: 250px;
             height: 250px;
             pointer-events: none; /* Ensures the camera can still focus */
